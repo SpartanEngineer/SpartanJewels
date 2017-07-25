@@ -162,7 +162,7 @@ main = do
   updatedJewelGridAndPoints <- updateJewelGrid (V.fromList randomJewels) 0
   let jewelGrid = V.toList (fst updatedJewelGridAndPoints)
 
-  a <- sequence $ map updateButtonText (zip buttons jewelGrid) --set the buttons to the values of the jewelGrid
+  _ <- sequence $ map updateButtonText (zip buttons jewelGrid) --set the buttons to the values of the jewelGrid
 
   hbox <- hBoxNew True 2
   newGameButton <- buttonNewWithMnemonic "New Game?"
