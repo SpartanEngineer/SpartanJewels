@@ -6,10 +6,17 @@ import qualified Data.Vector as V
 import Graphics.UI.Gtk
 import Control.Monad(replicateM)
 import Control.Monad.IO.Class
+import Reactive.Banana.Frameworks
+import Reactive.Banana.Combinators
 
 data JewelType = JDiamond | JStar | JCircle | JSquare | JX | NoJewel deriving (Eq, Show)
 data MatchInfo = MatchInfo {_matchSize :: Int, _matchRow :: Int, _matchCol :: Int, _matchIsVert :: Bool} deriving (Show)
-data GameState = GameState{_gsIndexSelected :: Bool, _gsIndex :: Int, _gsJewels :: [JewelType], _gsButtons :: [Button], _gsPoints :: Int}
+type RowColIndex = (Int, Int)
+data GameState = GameState {
+    g_SelIndex1 :: Maybe RowColIndex
+  , g_SelIndex2 :: Maybe RowColIndex
+  , g_Points :: Int
+} deriving (Show)
 
 nCols :: Int
 nCols = 8
@@ -116,15 +123,23 @@ updateJewelGrid jewels points = do
             replacedJewels <- sequence $ (V.map replaceNoJewelWithRandomJewel newJewels)
             updateJewelGrid replacedJewels (points + (_matchSize justMatch))
 
-makeButtonAndAttach :: Grid -> Int -> Int -> IO Button
+makeButtonAndAttach :: Grid -> Int -> Int -> IO (Button, AddHandler RowColIndex)
 makeButtonAndAttach grid i j = do
   button <- buttonNew
   button `on` buttonActivated $ do
     set button [ buttonLabel := "clicked" ]
     widgetModifyFg button StateNormal (Color 65535 0 0)
 
+  buttonAddHandler <- makeButtonAddHandler button i j
+
   gridAttach grid button j i 1 1
-  return button
+  return (button, buttonAddHandler)
+
+makeButtonAddHandler :: Button -> Int -> Int -> IO (AddHandler RowColIndex)
+makeButtonAddHandler button row col = do
+  (addHandler, fire) <- newAddHandler
+  _ <- button `on` buttonActivated $ do fire (row, col)
+  return addHandler
 
 updateButtonText :: (Button, JewelType) -> IO Button
 updateButtonText pair = do
@@ -157,7 +172,8 @@ main = do
   gridSetColumnHomogeneous grid True
   widgetSetSizeRequest grid 600 550
 
-  buttons <- sequence $ [makeButtonAndAttach grid i j | i <- [0..(nRows-1)], j <- [0..(nCols-1)]]
+  buttonsAndHandlers <- sequence $ [makeButtonAndAttach grid i j | i <- [0..(nRows-1)], j <- [0..(nCols-1)]]
+  let buttons = fmap fst buttonsAndHandlers
   randomJewels <- getRandomJewelList
   updatedJewelGridAndPoints <- updateJewelGrid (V.fromList randomJewels) 0
   let jewelGrid = V.toList (fst updatedJewelGridAndPoints)
@@ -175,6 +191,19 @@ main = do
   boxPackStart vbox grid PackNatural 0
   boxPackStart vbox separator PackNatural 0
   boxPackStart vbox hbox PackNatural 0
+
+  let networkDescription :: MomentIO()
+    networkDescription = do
+      buttonEventsList <- sequence $ fmap fromAddHandler (fmap snd buttonsAndHandlers)
+      let mergedEvents = foldl (unionWith (\x _ -> x)) (head buttonEventsList) (tail buttonEventsList)
+
+      let initialState = GameState {g_SelIndex1=Nothing, g_SelIndex2=Nothing, g_Points=0}
+      buttonAccum <- accumE initialState ((\_ y -> y) <$> mergedEvents)
+
+      reactimate $ fmap print buttonAccum
+
+  network <- compile networkDescription
+  actuate network
 
   widgetShowAll window
   mainGUI
