@@ -12,6 +12,8 @@ import Reactive.Banana.Combinators
 data JewelType = JDiamond | JStar | JCircle | JSquare | JX | NoJewel deriving (Eq, Show)
 data MatchInfo = MatchInfo {_matchSize :: Int, _matchRow :: Int, _matchCol :: Int, _matchIsVert :: Bool} deriving (Show)
 type RowColIndex = (Int, Int)
+data GUIEvent = RowColIndex | NewGameEvent
+
 data GameState = GameState {
     g_SelIndex1 :: Maybe RowColIndex
   , g_SelIndex2 :: Maybe RowColIndex
@@ -153,6 +155,9 @@ updatePointsLabel label points = do
   set label [labelText := ((show points) ++ " Points")]
   return label
 
+mergeState :: RowColIndex -> GameState -> GameState
+mergeState event state = state
+
 main :: IO ()
 main = do
   initGUI
@@ -193,14 +198,14 @@ main = do
   boxPackStart vbox hbox PackNatural 0
 
   let networkDescription :: MomentIO()
-    networkDescription = do
-      buttonEventsList <- sequence $ fmap fromAddHandler (fmap snd buttonsAndHandlers)
-      let mergedEvents = foldl (unionWith (\x _ -> x)) (head buttonEventsList) (tail buttonEventsList)
+      networkDescription = do
+        buttonEventsList <- sequence $ fmap fromAddHandler (fmap snd buttonsAndHandlers)
+        let mergedEvents = foldl (unionWith (\x _ -> x)) (head buttonEventsList) (tail buttonEventsList)
 
-      let initialState = GameState {g_SelIndex1=Nothing, g_SelIndex2=Nothing, g_Points=0}
-      buttonAccum <- accumE initialState ((\_ y -> y) <$> mergedEvents)
+        let initialState = GameState {g_SelIndex1=Nothing, g_SelIndex2=Nothing, g_Points=0}
+        buttonAccum <- accumE initialState (mergeState <$> mergedEvents)
 
-      reactimate $ fmap print buttonAccum
+        reactimate $ fmap print buttonAccum
 
   network <- compile networkDescription
   actuate network
