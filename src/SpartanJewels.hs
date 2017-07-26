@@ -42,6 +42,12 @@ replaceNoJewelWithRandomJewel jewel = do
        NoJewel -> getRandomJewel
        _ -> return jewel
 
+rowColRowDiff :: RowColIndex -> RowColIndex -> Int
+rowColRowDiff (row1, _) (row2, _) = abs(row1 - row2)
+
+rowColColDiff :: RowColIndex -> RowColIndex -> Int
+rowColColDiff (_, col1) (_, col2) = abs(col1 - col2)
+
 rowColToIndex :: Int -> Int -> Int
 rowColToIndex row col = (row * nRows) + col
 
@@ -156,7 +162,17 @@ updatePointsLabel label points = do
   return label
 
 mergeState :: RowColIndex -> GameState -> GameState
-mergeState event state = state
+mergeState index state =
+  let index1 = g_SelIndex1 state
+      index2 = g_SelIndex2 state
+      colDiff = rowColColDiff (fromJust index1) index
+      rowDiff = rowColRowDiff (fromJust index1) index
+      (minDiff, maxDiff) = (min colDiff rowDiff, max colDiff rowDiff)
+  in case (index1, index2, minDiff, maxDiff) of 
+    (Nothing, Nothing, _, _) -> state {g_SelIndex1 = Just index, g_SelIndex2 = Nothing}
+    (Just _, Just _, _, _) -> state {g_SelIndex1 = Just index, g_SelIndex2 = Nothing}
+    (Just _, Nothing, 0, 1) -> state {g_SelIndex2 = Just index}
+    (_, _, _, _) -> state {g_SelIndex1 = Nothing, g_SelIndex2 = Nothing}
 
 main :: IO ()
 main = do
