@@ -8,6 +8,7 @@ import Control.Monad(replicateM)
 import Control.Monad.IO.Class
 import Reactive.Banana.Frameworks
 import Reactive.Banana.Combinators
+import System.IO.Unsafe(unsafePerformIO)
 
 data JewelType = JDiamond | JStar | JCircle | JSquare | JX | NoJewel deriving (Eq, Show)
 data MatchInfo = MatchInfo {_matchSize :: Int, _matchRow :: Int, _matchCol :: Int, _matchIsVert :: Bool} deriving (Show)
@@ -20,7 +21,9 @@ data GameState = GameState {
   , g_SelIndex2 :: Maybe RowColIndex
   , g_Points :: Int
   , g_Event :: GUIEvent
-} deriving (Show)
+  , g_Jewels :: [JewelType]
+  , g_Buttons :: [Button]
+}
 
 nCols :: Int
 nCols = 8
@@ -133,12 +136,36 @@ updateJewelGrid jewels points = do
             replacedJewels <- sequence $ (V.map replaceNoJewelWithRandomJewel newJewels)
             updateJewelGrid replacedJewels (points + (_matchSize justMatch))
 
+getSwappedJewelGrid :: V.Vector JewelType -> RowColIndex -> RowColIndex -> V.Vector JewelType
+getSwappedJewelGrid jewels index1 index2 = jewelsReplaced
+  where row1 = fst index1
+        col1 = snd index1
+        row2 = fst index2
+        col2 = snd index2
+
+        swapJewel :: Int -> Int -> JewelType
+        swapJewel r c 
+          | r == row1 && c == col1 = (jewels V.! (rowColToIndex row2 col2))
+          | r == row2 && c == col2 = (jewels V.! (rowColToIndex row1 col1))
+          | otherwise = jewels V.! (rowColToIndex r c)
+
+        jewelsReplaced = V.fromList [swapJewel i j | i <- [0..nRows-1], j <- [0..nCols-1]]
+
+updateJewelGridState :: GameState -> RowColIndex -> RowColIndex -> IO GameState
+updateJewelGridState state index1 index2 = do
+  let jewels = g_Jewels state
+  let swappedJewels = getSwappedJewelGrid (V.fromList jewels) index1 index2
+  updatedGrid <- updateJewelGrid swappedJewels 0
+  let updatedJewels = fst updatedGrid
+  let points = (g_Points state) + (snd updatedGrid)
+  return state {g_Jewels = (V.toList updatedJewels), g_Points = points}
+
 makeButtonAndAttach :: Grid -> Int -> Int -> IO (Button, AddHandler GUIEvent)
 makeButtonAndAttach grid i j = do
   button <- buttonNew
-  button `on` buttonActivated $ do
-    set button [ buttonLabel := "clicked" ]
-    widgetModifyFg button StateNormal (Color 65535 0 0)
+  --button `on` buttonActivated $ do
+  --  set button [ buttonLabel := "clicked" ]
+  --  widgetModifyFg button StateNormal (Color 65535 0 0)
 
   buttonAddHandler <- makeButtonAddHandler button i j
 
@@ -164,12 +191,18 @@ updateButtonText pair = do
   set button [buttonLabel := (show jewel)]
   return button
 
+updateButtonSelected :: Bool -> Button -> IO ()
+updateButtonSelected selected button = do
+  case selected of
+    True -> widgetModifyFg button StateNormal (Color 65535 0 0)
+    False -> widgetModifyFg button StateNormal (Color 0 0 0)
+
 updatePointsLabel :: Label -> Int -> IO Label
 updatePointsLabel label points = do
   set label [labelText := ((show points) ++ " Points")]
   return label
 
-processRowColEvent :: RowColIndex -> GameState -> GameState
+processRowColEvent :: RowColIndex -> GameState -> IO GameState
 processRowColEvent index state =
   let index1 = g_SelIndex1 state
       index2 = g_SelIndex2 state
@@ -177,28 +210,47 @@ processRowColEvent index state =
       rowDiff = rowColRowDiff (fromJust index1) index
       (minDiff, maxDiff) = (min colDiff rowDiff, max colDiff rowDiff)
   in case (index1, index2, minDiff, maxDiff) of 
-    (Nothing, Nothing, _, _) -> state {g_SelIndex1 = Just index, g_SelIndex2 = Nothing}
-    (Just _, Just _, _, _) -> state {g_SelIndex1 = Just index, g_SelIndex2 = Nothing}
-    (Just _, Nothing, 0, 1) -> state {g_SelIndex2 = Just index}
-    (_, _, _, _) -> state {g_SelIndex1 = Nothing, g_SelIndex2 = Nothing}
+    (Nothing, Nothing, _, _) -> return state {g_SelIndex1 = Just index, g_SelIndex2 = Nothing}
+    (Just a, Just b, _, _) -> updateJewelGridState (state {g_SelIndex1 = Just index, g_SelIndex2 = Nothing}) a b
+    (Just _, Nothing, 0, 1) -> return state {g_SelIndex2 = Just index}
+    (_, _, _, _) -> return state {g_SelIndex1 = Nothing, g_SelIndex2 = Nothing}
 
-processNewGameEvent :: GameState -> GameState
-processNewGameEvent state = state {g_Points=0, g_SelIndex1=Nothing, g_SelIndex2=Nothing}
+--TODO: finish implementing
+processNewGameEvent :: GameState -> IO GameState
+processNewGameEvent state = return (state {g_Points=0, g_SelIndex1=Nothing, g_SelIndex2=Nothing})
 
 mergeState :: GUIEvent -> GameState -> GameState
 mergeState event state =
   let eventState = state {g_Event=event}
   in case event of 
-    RowColEvent index -> processRowColEvent index eventState
-    NewGameEvent -> processNewGameEvent eventState
+    RowColEvent index -> unsafePerformIO (processRowColEvent index eventState)
+    NewGameEvent -> unsafePerformIO (processNewGameEvent eventState)
 
 --TODO: finish implementing this function
+updateRowColEvent :: GameState -> IO()
+updateRowColEvent state =
+  let index1 = g_SelIndex1 state
+      index2 = g_SelIndex2 state
+      buttons = g_Buttons state
+  in case (index1, index2) of
+    (Just a, Nothing) -> do _ <- sequence $ map (updateButtonSelected False) buttons
+                            let buttonSelected = buttons !! (rowColToIndex (fst a) (snd a))
+                            updateButtonSelected True buttonSelected
+    (Just _, Just _) -> return ()
+    (Nothing, Nothing) -> do _ <- sequence $ map (updateButtonSelected False) buttons
+                             return ()
+    (_, _) -> return ()
+
+--TODO: finish implementing this function
+updateNewGameEvent :: GameState -> IO()
+updateNewGameEvent _ = return ()
+
 updateGUIDisplay :: GameState -> IO()
 updateGUIDisplay state =
   let event = g_Event state
   in case event of
-    RowColEvent _ -> print state
-    NewGameEvent -> print state
+    RowColEvent _ -> updateRowColEvent state
+    NewGameEvent -> updateNewGameEvent state
 
 main :: IO ()
 main = do
@@ -248,7 +300,7 @@ main = do
         guiEventsList <- sequence $ fmap fromAddHandler allGUIEventHandlers
         let mergedEvents = foldl (unionWith (\x _ -> x)) (head guiEventsList) (tail guiEventsList)
 
-        let initialState = GameState {g_SelIndex1=Nothing, g_SelIndex2=Nothing, g_Points=0, g_Event=NewGameEvent}
+        let initialState = GameState {g_SelIndex1=Nothing, g_SelIndex2=Nothing, g_Points=0, g_Event=NewGameEvent, g_Jewels=jewelGrid, g_Buttons=buttons}
         buttonAccum <- accumE initialState (mergeState <$> mergedEvents)
 
         reactimate $ fmap updateGUIDisplay buttonAccum
