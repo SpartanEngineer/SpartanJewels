@@ -23,6 +23,7 @@ data GameState = GameState {
   , g_Event :: GUIEvent
   , g_Jewels :: [JewelType]
   , g_Buttons :: [Button]
+  , g_PointsLabel :: Label
 }
 
 nCols :: Int
@@ -163,12 +164,7 @@ updateJewelGridState state index1 index2 = do
 makeButtonAndAttach :: Grid -> Int -> Int -> IO (Button, AddHandler GUIEvent)
 makeButtonAndAttach grid i j = do
   button <- buttonNew
-  --button `on` buttonActivated $ do
-  --  set button [ buttonLabel := "clicked" ]
-  --  widgetModifyFg button StateNormal (Color 65535 0 0)
-
   buttonAddHandler <- makeButtonAddHandler button i j
-
   gridAttach grid button j i 1 1
   return (button, buttonAddHandler)
 
@@ -232,11 +228,17 @@ updateRowColEvent state =
   let index1 = g_SelIndex1 state
       index2 = g_SelIndex2 state
       buttons = g_Buttons state
+      pointsLabel = g_PointsLabel state
+      points = g_Points state
+      jewels = g_Jewels state
   in case (index1, index2) of
     (Just a, Nothing) -> do _ <- sequence $ map (updateButtonSelected False) buttons
                             let buttonSelected = buttons !! (rowColToIndex (fst a) (snd a))
                             updateButtonSelected True buttonSelected
-    (Just _, Just _) -> return ()
+    (Just _, Just _) -> do _ <- sequence $ map (updateButtonSelected False) buttons
+                           _ <- sequence $ map updateButtonText (zip buttons jewels)
+                           updatePointsLabel pointsLabel points
+                           return ()
     (Nothing, Nothing) -> do _ <- sequence $ map (updateButtonSelected False) buttons
                              return ()
     (_, _) -> return ()
@@ -300,7 +302,7 @@ main = do
         guiEventsList <- sequence $ fmap fromAddHandler allGUIEventHandlers
         let mergedEvents = foldl (unionWith (\x _ -> x)) (head guiEventsList) (tail guiEventsList)
 
-        let initialState = GameState {g_SelIndex1=Nothing, g_SelIndex2=Nothing, g_Points=0, g_Event=NewGameEvent, g_Jewels=jewelGrid, g_Buttons=buttons}
+        let initialState = GameState {g_SelIndex1=Nothing, g_SelIndex2=Nothing, g_Points=0, g_Event=NewGameEvent, g_Jewels=jewelGrid, g_Buttons=buttons, g_PointsLabel=pointsLabel}
         buttonAccum <- accumE initialState (mergeState <$> mergedEvents)
 
         reactimate $ fmap updateGUIDisplay buttonAccum
