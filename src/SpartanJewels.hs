@@ -11,13 +11,15 @@ import Reactive.Banana.Combinators
 
 data JewelType = JDiamond | JStar | JCircle | JSquare | JX | NoJewel deriving (Eq, Show)
 data MatchInfo = MatchInfo {_matchSize :: Int, _matchRow :: Int, _matchCol :: Int, _matchIsVert :: Bool} deriving (Show)
+
 type RowColIndex = (Int, Int)
-data GUIEvent = RowColIndex | NewGameEvent
+data GUIEvent = RowColEvent RowColIndex | NewGameEvent deriving (Show)
 
 data GameState = GameState {
     g_SelIndex1 :: Maybe RowColIndex
   , g_SelIndex2 :: Maybe RowColIndex
   , g_Points :: Int
+  , g_Event :: GUIEvent
 } deriving (Show)
 
 nCols :: Int
@@ -131,7 +133,7 @@ updateJewelGrid jewels points = do
             replacedJewels <- sequence $ (V.map replaceNoJewelWithRandomJewel newJewels)
             updateJewelGrid replacedJewels (points + (_matchSize justMatch))
 
-makeButtonAndAttach :: Grid -> Int -> Int -> IO (Button, AddHandler RowColIndex)
+makeButtonAndAttach :: Grid -> Int -> Int -> IO (Button, AddHandler GUIEvent)
 makeButtonAndAttach grid i j = do
   button <- buttonNew
   button `on` buttonActivated $ do
@@ -143,10 +145,16 @@ makeButtonAndAttach grid i j = do
   gridAttach grid button j i 1 1
   return (button, buttonAddHandler)
 
-makeButtonAddHandler :: Button -> Int -> Int -> IO (AddHandler RowColIndex)
+makeButtonAddHandler :: Button -> Int -> Int -> IO (AddHandler GUIEvent)
 makeButtonAddHandler button row col = do
   (addHandler, fire) <- newAddHandler
-  _ <- button `on` buttonActivated $ do fire (row, col)
+  _ <- button `on` buttonActivated $ do fire (RowColEvent (row, col))
+  return addHandler
+
+makeNewGameButtonAddHandler :: Button -> IO (AddHandler GUIEvent)
+makeNewGameButtonAddHandler button = do
+  (addHandler, fire) <- newAddHandler
+  _ <- button `on` buttonActivated $ do fire NewGameEvent
   return addHandler
 
 updateButtonText :: (Button, JewelType) -> IO Button
@@ -161,8 +169,8 @@ updatePointsLabel label points = do
   set label [labelText := ((show points) ++ " Points")]
   return label
 
-mergeState :: RowColIndex -> GameState -> GameState
-mergeState index state =
+processRowColEvent :: RowColIndex -> GameState -> GameState
+processRowColEvent index state =
   let index1 = g_SelIndex1 state
       index2 = g_SelIndex2 state
       colDiff = rowColColDiff (fromJust index1) index
@@ -174,13 +182,31 @@ mergeState index state =
     (Just _, Nothing, 0, 1) -> state {g_SelIndex2 = Just index}
     (_, _, _, _) -> state {g_SelIndex1 = Nothing, g_SelIndex2 = Nothing}
 
+processNewGameEvent :: GameState -> GameState
+processNewGameEvent state = state {g_Points=0, g_SelIndex1=Nothing, g_SelIndex2=Nothing}
+
+mergeState :: GUIEvent -> GameState -> GameState
+mergeState event state =
+  let eventState = state {g_Event=event}
+  in case event of 
+    RowColEvent index -> processRowColEvent index eventState
+    NewGameEvent -> processNewGameEvent eventState
+
+--TODO: finish implementing this function
+updateGUIDisplay :: GameState -> IO()
+updateGUIDisplay state =
+  let event = g_Event state
+  in case event of
+    RowColEvent _ -> print state
+    NewGameEvent -> print state
+
 main :: IO ()
 main = do
   initGUI
   window <- windowNew
   window `on` deleteEvent $ liftIO mainQuit >> return False --quit on close of window
 
-  set window [ windowTitle := "Jewels"
+  set window [ windowTitle := "SpartanJewels"
              , windowResizable := True
              , windowDefaultHeight := 600
              , windowDefaultWidth := 600 ]
@@ -203,6 +229,8 @@ main = do
 
   hbox <- hBoxNew True 2
   newGameButton <- buttonNewWithMnemonic "New Game?"
+  newGameButtonAddHandler <- makeNewGameButtonAddHandler newGameButton
+
   pointsLabel <- labelNewWithMnemonic "0 Points"
   boxPackStart hbox newGameButton PackNatural 0
   boxPackStart hbox pointsLabel PackNatural 0
@@ -213,15 +241,17 @@ main = do
   boxPackStart vbox separator PackNatural 0
   boxPackStart vbox hbox PackNatural 0
 
+  let allGUIEventHandlers = newGameButtonAddHandler : (fmap snd buttonsAndHandlers) 
+
   let networkDescription :: MomentIO()
       networkDescription = do
-        buttonEventsList <- sequence $ fmap fromAddHandler (fmap snd buttonsAndHandlers)
-        let mergedEvents = foldl (unionWith (\x _ -> x)) (head buttonEventsList) (tail buttonEventsList)
+        guiEventsList <- sequence $ fmap fromAddHandler allGUIEventHandlers
+        let mergedEvents = foldl (unionWith (\x _ -> x)) (head guiEventsList) (tail guiEventsList)
 
-        let initialState = GameState {g_SelIndex1=Nothing, g_SelIndex2=Nothing, g_Points=0}
+        let initialState = GameState {g_SelIndex1=Nothing, g_SelIndex2=Nothing, g_Points=0, g_Event=NewGameEvent}
         buttonAccum <- accumE initialState (mergeState <$> mergedEvents)
 
-        reactimate $ fmap print buttonAccum
+        reactimate $ fmap updateGUIDisplay buttonAccum
 
   network <- compile networkDescription
   actuate network
