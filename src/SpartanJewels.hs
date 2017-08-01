@@ -158,8 +158,11 @@ updateJewelGridState state index1 index2 = do
   let swappedJewels = getSwappedJewelGrid (V.fromList jewels) index1 index2
   updatedGrid <- updateJewelGrid swappedJewels 0
   let updatedJewels = fst updatedGrid
-  let points = (g_Points state) + (snd updatedGrid)
-  return state {g_Jewels = (V.toList updatedJewels), g_Points = points}
+  let points = snd updatedGrid
+  let newPoints = (g_Points state) + points
+  case points of
+    0 -> return state
+    _ -> return state {g_Jewels = (V.toList updatedJewels), g_Points = newPoints}
 
 makeButtonAndAttach :: Grid -> Int -> Int -> IO (Button, AddHandler GUIEvent)
 makeButtonAndAttach grid i j = do
@@ -207,8 +210,8 @@ processRowColEvent index state =
       (minDiff, maxDiff) = (min colDiff rowDiff, max colDiff rowDiff)
   in case (index1, index2, minDiff, maxDiff) of 
     (Nothing, Nothing, _, _) -> return state {g_SelIndex1 = Just index, g_SelIndex2 = Nothing}
-    (Just a, Just b, _, _) -> updateJewelGridState (state {g_SelIndex1 = Just index, g_SelIndex2 = Nothing}) a b
-    (Just _, Nothing, 0, 1) -> return state {g_SelIndex2 = Just index}
+    (Just _, Just _, _, _) -> return state {g_SelIndex1 = Just index, g_SelIndex2 = Nothing}
+    (Just a, Nothing, 0, 1) -> updateJewelGridState (state {g_SelIndex2 = Just index}) a index
     (_, _, _, _) -> return state {g_SelIndex1 = Nothing, g_SelIndex2 = Nothing}
 
 --TODO: finish implementing
