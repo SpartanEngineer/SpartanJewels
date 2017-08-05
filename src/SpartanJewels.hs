@@ -65,8 +65,8 @@ indexToRowCol index =
 
 makeJewelMatchInfo :: Int -> Int -> Int -> Bool -> MatchInfo
 makeJewelMatchInfo size index index2 isVert =
-  case isVert of False -> MatchInfo{_matchSize=size, _matchRow=index2, _matchCol=index, _matchIsVert=True} 
-                 True -> MatchInfo{_matchSize=size, _matchRow=index, _matchCol=index2, _matchIsVert=False} 
+  case isVert of False -> MatchInfo{_matchSize=size, _matchRow=index2, _matchCol=index, _matchIsVert=False} 
+                 True -> MatchInfo{_matchSize=size, _matchRow=index, _matchCol=index2, _matchIsVert=True} 
 
 getJewelMatch :: V.Vector JewelType -> Int -> Int -> Bool -> Maybe MatchInfo
 --j must be a single row or column, call with i equal to the length of j - 1
