@@ -214,18 +214,21 @@ processRowColEvent index state =
     (Just a, Nothing, 0, 1) -> updateJewelGridState (state {g_SelIndex2 = Just index}) a index
     (_, _, _, _) -> return state {g_SelIndex1 = Nothing, g_SelIndex2 = Nothing}
 
---TODO: finish implementing
 processNewGameEvent :: GameState -> IO GameState
-processNewGameEvent state = return (state {g_Points=0, g_SelIndex1=Nothing, g_SelIndex2=Nothing})
+processNewGameEvent state = do
+  randomJewels <- getRandomJewelList
+  updatedJewelGridAndPoints <- updateJewelGrid (V.fromList randomJewels) 0
+  let jewelGrid = V.toList (fst updatedJewelGridAndPoints)
+  return (state {g_Points=0, g_SelIndex1=Nothing, g_SelIndex2=Nothing, g_Jewels=jewelGrid})
 
 mergeState :: GUIEvent -> GameState -> GameState
+--note: is there a way to avoid using unsafePerformIO here???
 mergeState event state =
   let eventState = state {g_Event=event}
   in case event of 
     RowColEvent index -> unsafePerformIO (processRowColEvent index eventState)
     NewGameEvent -> unsafePerformIO (processNewGameEvent eventState)
 
---TODO: finish implementing this function
 updateRowColEvent :: GameState -> IO()
 updateRowColEvent state =
   let index1 = g_SelIndex1 state
@@ -246,9 +249,17 @@ updateRowColEvent state =
                              return ()
     (_, _) -> return ()
 
---TODO: finish implementing this function
 updateNewGameEvent :: GameState -> IO()
-updateNewGameEvent _ = return ()
+updateNewGameEvent state = 
+  let buttons = g_Buttons state
+      jewels = g_Jewels state
+      points = g_Points state
+      pointsLabel = g_PointsLabel state
+  in do
+    _ <- sequence $ map (updateButtonSelected False) buttons
+    _ <- sequence $ map updateButtonText (zip buttons jewels)
+    updatePointsLabel pointsLabel points
+    return ()
 
 updateGUIDisplay :: GameState -> IO()
 updateGUIDisplay state =
