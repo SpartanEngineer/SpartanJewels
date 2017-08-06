@@ -305,6 +305,14 @@ main = do
 
   separator <- hSeparatorNew
 
+  img <- imageNewFromFile "res/images/circle.png"
+  buttonBox <- hBoxNew False 0
+  buttonImg <- buttonNew
+
+  boxPackStart buttonBox img PackNatural 0
+  containerAdd buttonImg buttonBox
+  --boxPackStart hbox buttonImg PackNatural 0
+
   boxPackStart vbox grid PackNatural 0
   boxPackStart vbox separator PackNatural 0
   boxPackStart vbox hbox PackNatural 0
