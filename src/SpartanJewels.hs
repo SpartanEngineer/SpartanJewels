@@ -26,6 +26,22 @@ data GameState = GameState {
   , g_PointsLabel :: Label
 }
 
+fileSepChar :: String
+fileSepChar = "/"
+resourcesDir :: String
+resourcesDir = "res"
+imagesDir :: String
+imagesDir = resourcesDir ++ fileSepChar ++ "images"
+
+circleFileLocation :: String
+circleFileLocation = imagesDir ++ fileSepChar ++ "circle.png"
+pressedCircleFileLocation :: String
+pressedCircleFileLocation = imagesDir ++ fileSepChar ++ "pressed_circle.png"
+starFileLocation :: String
+starFileLocation = imagesDir ++ fileSepChar ++ "star.png"
+pressedStarFileLocation :: String
+pressedStarFileLocation = imagesDir ++ fileSepChar ++ "pressed_star.png"
+
 nCols :: Int
 nCols = 8
 nRows :: Int
@@ -196,6 +212,33 @@ updateButtonSelected selected button = do
     True -> widgetModifyFg button StateNormal (Color 65535 0 0)
     False -> widgetModifyFg button StateNormal (Color 0 0 0)
 
+getJewelImage :: JewelType -> Bool -> IO Image
+--TODO: finish implementing this function
+getJewelImage jt selected = do
+  pixBuf <- pixbufNewFromFileAtScale fileName height width False
+  img <- imageNewFromPixbuf pixBuf
+  return img
+  where height = 60
+        width = 60
+        fileName = case (jt, selected) of
+                   (JStar, False) -> starFileLocation
+                   (JStar, True) -> pressedStarFileLocation
+                   (JCircle, False) -> circleFileLocation
+                   (JCircle, True) -> pressedCircleFileLocation
+                   (_, _) -> circleFileLocation
+
+setButtonJewelImage :: Button -> JewelType -> Bool -> IO()
+setButtonJewelImage button jt selected = do
+  buttonChildren <- containerGetChildren button
+  _ <- sequence $ map (containerRemove button) buttonChildren
+
+  img <- getJewelImage jt selected
+  buttonBox <- hBoxNew False 0
+
+  boxPackStart buttonBox img PackNatural 0
+  containerAdd button buttonBox
+  return ()
+
 updatePointsLabel :: Label -> Int -> IO Label
 updatePointsLabel label points = do
   set label [labelText := ((show points) ++ " Points")]
@@ -305,12 +348,9 @@ main = do
 
   separator <- hSeparatorNew
 
-  img <- imageNewFromFile "res/images/circle.png"
-  buttonBox <- hBoxNew False 0
-  buttonImg <- buttonNew
-
-  boxPackStart buttonBox img PackNatural 0
-  containerAdd buttonImg buttonBox
+  --buttonImg <- buttonNew
+  --_ <- setButtonJewelImage buttonImg JCircle True
+  --_ <- setButtonJewelImage buttonImg JStar True
   --boxPackStart hbox buttonImg PackNatural 0
 
   boxPackStart vbox grid PackNatural 0
