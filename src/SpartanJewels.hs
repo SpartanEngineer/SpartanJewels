@@ -10,7 +10,7 @@ import Reactive.Banana.Frameworks
 import Reactive.Banana.Combinators
 import System.IO.Unsafe(unsafePerformIO)
 
-data JewelType = JDiamond | JStar | JCircle | JSquare | JX | NoJewel deriving (Eq, Show)
+data JewelType = JDiamond | JStar | JCircle | JSquare | NoJewel deriving (Eq, Show)
 data MatchInfo = MatchInfo {_matchSize :: Int, _matchRow :: Int, _matchCol :: Int, _matchIsVert :: Bool} deriving (Show)
 
 type RowColIndex = (Int, Int)
@@ -41,6 +41,14 @@ starFileLocation :: String
 starFileLocation = imagesDir ++ fileSepChar ++ "star.png"
 pressedStarFileLocation :: String
 pressedStarFileLocation = imagesDir ++ fileSepChar ++ "pressed_star.png"
+squareFileLocation :: String
+squareFileLocation = imagesDir ++ fileSepChar ++ "square.png"
+pressedSquareFileLocation :: String
+pressedSquareFileLocation = imagesDir ++ fileSepChar ++ "pressed_square.png"
+diamondFileLocation :: String
+diamondFileLocation = imagesDir ++ fileSepChar ++ "diamond.png"
+pressedDiamondFileLocation :: String
+pressedDiamondFileLocation = imagesDir ++ fileSepChar ++ "pressed_diamond.png"
 
 nCols :: Int
 nCols = 8
@@ -48,7 +56,7 @@ nRows :: Int
 nRows = 8
 
 jewelTypes :: V.Vector JewelType
-jewelTypes = V.fromList [JDiamond, JStar, JCircle, JSquare, JX]
+jewelTypes = V.fromList [JDiamond, JStar, JCircle, JSquare]
 
 getRandomJewel :: IO JewelType
 getRandomJewel = do
@@ -199,19 +207,7 @@ makeNewGameButtonAddHandler button = do
   _ <- button `on` buttonActivated $ do fire NewGameEvent
   return addHandler
 
-updateButtonText :: Button -> JewelType -> IO Button
-updateButtonText button jewel = do
-  set button [buttonLabel := (show jewel)]
-  return button
-
-updateButtonSelected :: Button -> Bool -> IO ()
-updateButtonSelected button selected = do
-  case selected of
-    True -> widgetModifyFg button StateNormal (Color 65535 0 0)
-    False -> widgetModifyFg button StateNormal (Color 0 0 0)
-
 getJewelImage :: JewelType -> Bool -> IO Image
---TODO: finish implementing this function
 getJewelImage jt selected = do
   pixBuf <- pixbufNewFromFileAtScale fileName height width False
   img <- imageNewFromPixbuf pixBuf
@@ -223,23 +219,24 @@ getJewelImage jt selected = do
                    (JStar, True) -> pressedStarFileLocation
                    (JCircle, False) -> circleFileLocation
                    (JCircle, True) -> pressedCircleFileLocation
-                   (_, _) -> circleFileLocation
+                   (JDiamond, False) -> diamondFileLocation
+                   (JDiamond, True) -> pressedDiamondFileLocation
+                   (JSquare, False) -> squareFileLocation
+                   (JSquare, True) -> pressedSquareFileLocation
+                   (_, _) -> ""
 
-updateButtonJewelImage :: (Button, JewelType, Bool) -> IO ()
---TODO: finish implementing this function
+updateButtonJewelImage :: (Button, JewelType, Bool) -> IO Button
 updateButtonJewelImage (button, jt, selected) = do
-  _ <- updateButtonText button jt
-  updateButtonSelected button selected
+  buttonChildren <- containerGetChildren button
+  sequence $ map (containerRemove button) buttonChildren
 
-  --buttonChildren <- containerGetChildren button
-  --sequence $ map (containerRemove button) buttonChildren
+  img <- getJewelImage jt selected
+  buttonBox <- hBoxNew False 0
 
-  --img <- getJewelImage jt selected
-  --buttonBox <- hBoxNew False 0
-
-  --boxPackStart buttonBox img PackNatural 0
-  --containerAdd button buttonBox
-  --return ()
+  boxPackStart buttonBox img PackNatural 0
+  containerAdd button buttonBox
+  widgetShowAll button --doesn't update display without this!
+  return button
 
 updatePointsLabel :: Label -> Int -> IO Label
 updatePointsLabel label points = do
@@ -288,6 +285,7 @@ updateRowColEvent state =
                             let buttonSelected = buttons !! (rowColToIndex (fst a) (snd a))
                             let jewelSelected = jewels !! (rowColToIndex (fst a) (snd a))
                             updateButtonJewelImage (buttonSelected, jewelSelected, True)
+                            return ()
     (Just _, Just _) -> do sequence $ map updateButtonJewelImage zipped
                            updatePointsLabel pointsLabel points
                            return ()
