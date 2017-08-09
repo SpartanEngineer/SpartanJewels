@@ -199,15 +199,13 @@ makeNewGameButtonAddHandler button = do
   _ <- button `on` buttonActivated $ do fire NewGameEvent
   return addHandler
 
-updateButtonText :: (Button, JewelType) -> IO Button
-updateButtonText pair = do
-  let button = fst pair
-  let jewel = snd pair
+updateButtonText :: Button -> JewelType -> IO Button
+updateButtonText button jewel = do
   set button [buttonLabel := (show jewel)]
   return button
 
-updateButtonSelected :: Bool -> Button -> IO ()
-updateButtonSelected selected button = do
+updateButtonSelected :: Button -> Bool -> IO ()
+updateButtonSelected button selected = do
   case selected of
     True -> widgetModifyFg button StateNormal (Color 65535 0 0)
     False -> widgetModifyFg button StateNormal (Color 0 0 0)
@@ -227,17 +225,21 @@ getJewelImage jt selected = do
                    (JCircle, True) -> pressedCircleFileLocation
                    (_, _) -> circleFileLocation
 
-setButtonJewelImage :: Button -> JewelType -> Bool -> IO()
-setButtonJewelImage button jt selected = do
-  buttonChildren <- containerGetChildren button
-  _ <- sequence $ map (containerRemove button) buttonChildren
+updateButtonJewelImage :: (Button, JewelType, Bool) -> IO ()
+--TODO: finish implementing this function
+updateButtonJewelImage (button, jt, selected) = do
+  _ <- updateButtonText button jt
+  updateButtonSelected button selected
 
-  img <- getJewelImage jt selected
-  buttonBox <- hBoxNew False 0
+  --buttonChildren <- containerGetChildren button
+  --sequence $ map (containerRemove button) buttonChildren
 
-  boxPackStart buttonBox img PackNatural 0
-  containerAdd button buttonBox
-  return ()
+  --img <- getJewelImage jt selected
+  --buttonBox <- hBoxNew False 0
+
+  --boxPackStart buttonBox img PackNatural 0
+  --containerAdd button buttonBox
+  --return ()
 
 updatePointsLabel :: Label -> Int -> IO Label
 updatePointsLabel label points = do
@@ -280,15 +282,16 @@ updateRowColEvent state =
       pointsLabel = g_PointsLabel state
       points = g_Points state
       jewels = g_Jewels state
+      zipped = zip3 buttons jewels (replicate (nCols*nRows) False)
   in case (index1, index2) of
-    (Just a, Nothing) -> do _ <- sequence $ map (updateButtonSelected False) buttons
+    (Just a, Nothing) -> do sequence $ map updateButtonJewelImage zipped
                             let buttonSelected = buttons !! (rowColToIndex (fst a) (snd a))
-                            updateButtonSelected True buttonSelected
-    (Just _, Just _) -> do _ <- sequence $ map (updateButtonSelected False) buttons
-                           _ <- sequence $ map updateButtonText (zip buttons jewels)
+                            let jewelSelected = jewels !! (rowColToIndex (fst a) (snd a))
+                            updateButtonJewelImage (buttonSelected, jewelSelected, True)
+    (Just _, Just _) -> do sequence $ map updateButtonJewelImage zipped
                            updatePointsLabel pointsLabel points
                            return ()
-    (Nothing, Nothing) -> do _ <- sequence $ map (updateButtonSelected False) buttons
+    (Nothing, Nothing) -> do sequence $ map updateButtonJewelImage zipped
                              return ()
     (_, _) -> return ()
 
@@ -298,9 +301,9 @@ updateNewGameEvent state =
       jewels = g_Jewels state
       points = g_Points state
       pointsLabel = g_PointsLabel state
+      zipped = zip3 buttons jewels (replicate (nCols*nRows) False)
   in do
-    _ <- sequence $ map (updateButtonSelected False) buttons
-    _ <- sequence $ map updateButtonText (zip buttons jewels)
+    sequence $ map updateButtonJewelImage zipped
     updatePointsLabel pointsLabel points
     return ()
 
@@ -336,7 +339,7 @@ main = do
   updatedJewelGridAndPoints <- updateJewelGrid (V.fromList randomJewels) 0
   let jewelGrid = V.toList (fst updatedJewelGridAndPoints)
 
-  _ <- sequence $ map updateButtonText (zip buttons jewelGrid) --set the buttons to the values of the jewelGrid
+  _ <- sequence $ map updateButtonJewelImage (zip3 buttons jewelGrid (replicate (nCols*nRows) False)) --set the buttons to the values of the jewelGrid
 
   hbox <- hBoxNew True 2
   newGameButton <- buttonNewWithMnemonic "New Game?"
@@ -347,11 +350,6 @@ main = do
   boxPackStart hbox pointsLabel PackNatural 0
 
   separator <- hSeparatorNew
-
-  --buttonImg <- buttonNew
-  --_ <- setButtonJewelImage buttonImg JCircle True
-  --_ <- setButtonJewelImage buttonImg JStar True
-  --boxPackStart hbox buttonImg PackNatural 0
 
   boxPackStart vbox grid PackNatural 0
   boxPackStart vbox separator PackNatural 0
