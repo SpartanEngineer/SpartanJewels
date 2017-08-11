@@ -110,11 +110,11 @@ getJewelMatch j i index2 isVert
 compareMatches :: Maybe MatchInfo -> Maybe MatchInfo -> Maybe MatchInfo
 compareMatches x Nothing = x
 compareMatches Nothing y = y
-compareMatches x y
-  | left >= right = x 
-  | otherwise = y
-  where left = _matchSize (fromJust x)
-        right = _matchSize (fromJust y)
+compareMatches (Just x) (Just y)
+  | left >= right = Just x 
+  | otherwise = Just y
+  where left = _matchSize x
+        right = _matchSize y
 
 getBestJewelMatch :: V.Vector JewelType -> Maybe MatchInfo
 getBestJewelMatch jewels =
@@ -158,7 +158,7 @@ updateJewelGrid jewels points = do
        _ -> do
             let justMatch = fromJust match
             let newJewels = getNewJewelGrid jewels justMatch
-            replacedJewels <- sequence $ (V.map replaceNoJewelWithRandomJewel newJewels)
+            replacedJewels <- V.mapM replaceNoJewelWithRandomJewel newJewels
             updateJewelGrid replacedJewels (points + (_matchSize justMatch))
 
 getSwappedJewelGrid :: V.Vector JewelType -> RowColIndex -> RowColIndex -> V.Vector JewelType
@@ -198,13 +198,13 @@ makeButtonAndAttach grid i j = do
 makeButtonAddHandler :: Button -> Int -> Int -> IO (AddHandler GUIEvent)
 makeButtonAddHandler button row col = do
   (addHandler, fire) <- newAddHandler
-  _ <- button `on` buttonActivated $ do fire (RowColEvent (row, col))
+  button `on` buttonActivated $ do fire (RowColEvent (row, col))
   return addHandler
 
 makeNewGameButtonAddHandler :: Button -> IO (AddHandler GUIEvent)
 makeNewGameButtonAddHandler button = do
   (addHandler, fire) <- newAddHandler
-  _ <- button `on` buttonActivated $ do fire NewGameEvent
+  button `on` buttonActivated $ do fire NewGameEvent
   return addHandler
 
 getJewelImage :: JewelType -> Bool -> IO Image
@@ -228,7 +228,7 @@ getJewelImage jt selected = do
 updateButtonJewelImage :: (Button, JewelType, Bool) -> IO Button
 updateButtonJewelImage (button, jt, selected) = do
   buttonChildren <- containerGetChildren button
-  sequence $ map (containerRemove button) buttonChildren
+  mapM (containerRemove button) buttonChildren
 
   img <- getJewelImage jt selected
   buttonBox <- hBoxNew False 0
@@ -267,9 +267,10 @@ mergeState :: GUIEvent -> GameState -> GameState
 --note: is there a way to avoid using unsafePerformIO here???
 mergeState event state =
   let eventState = state {g_Event=event}
-  in case event of 
-    RowColEvent index -> unsafePerformIO (processRowColEvent index eventState)
-    NewGameEvent -> unsafePerformIO (processNewGameEvent eventState)
+      newState = case event of 
+                 RowColEvent index -> processRowColEvent index eventState
+                 NewGameEvent -> processNewGameEvent eventState
+  in unsafePerformIO newState
 
 updateRowColEvent :: GameState -> IO()
 updateRowColEvent state =
@@ -281,15 +282,15 @@ updateRowColEvent state =
       jewels = g_Jewels state
       zipped = zip3 buttons jewels (replicate (nCols*nRows) False)
   in case (index1, index2) of
-    (Just a, Nothing) -> do sequence $ map updateButtonJewelImage zipped
+    (Just a, Nothing) -> do mapM_ updateButtonJewelImage zipped
                             let buttonSelected = buttons !! (rowColToIndex (fst a) (snd a))
                             let jewelSelected = jewels !! (rowColToIndex (fst a) (snd a))
                             updateButtonJewelImage (buttonSelected, jewelSelected, True)
                             return ()
-    (Just _, Just _) -> do sequence $ map updateButtonJewelImage zipped
+    (Just _, Just _) -> do mapM_ updateButtonJewelImage zipped
                            updatePointsLabel pointsLabel points
                            return ()
-    (Nothing, Nothing) -> do sequence $ map updateButtonJewelImage zipped
+    (Nothing, Nothing) -> do mapM_ updateButtonJewelImage zipped
                              return ()
     (_, _) -> return ()
 
@@ -301,7 +302,7 @@ updateNewGameEvent state =
       pointsLabel = g_PointsLabel state
       zipped = zip3 buttons jewels (replicate (nCols*nRows) False)
   in do
-    sequence $ map updateButtonJewelImage zipped
+    mapM_ updateButtonJewelImage zipped
     updatePointsLabel pointsLabel points
     return ()
 
@@ -337,7 +338,7 @@ main = do
   updatedJewelGridAndPoints <- updateJewelGrid (V.fromList randomJewels) 0
   let jewelGrid = V.toList (fst updatedJewelGridAndPoints)
 
-  _ <- sequence $ map updateButtonJewelImage (zip3 buttons jewelGrid (replicate (nCols*nRows) False)) --set the buttons to the values of the jewelGrid
+  mapM_ updateButtonJewelImage (zip3 buttons jewelGrid (replicate (nCols*nRows) False)) --set the buttons to the values of the jewelGrid
 
   hbox <- hBoxNew True 2
   newGameButton <- buttonNewWithMnemonic "New Game?"
@@ -357,7 +358,7 @@ main = do
 
   let networkDescription :: MomentIO()
       networkDescription = do
-        guiEventsList <- sequence $ fmap fromAddHandler allGUIEventHandlers
+        guiEventsList <- mapM fromAddHandler allGUIEventHandlers
         let mergedEvents = foldl (unionWith (\x _ -> x)) (head guiEventsList) (tail guiEventsList)
 
         let initialState = GameState {g_SelIndex1=Nothing, g_SelIndex2=Nothing, g_Points=0, g_Event=NewGameEvent, g_Jewels=jewelGrid, g_Buttons=buttons, g_PointsLabel=pointsLabel}
